@@ -33,12 +33,12 @@ int32_t main(int32_t argc, char **argv) {
     if ( (0 == commandlineArguments.count("in")) || (0 == commandlineArguments.count("map")) || (0 == commandlineArguments.count("out")) ) {
         std::cerr << argv[0] << " reads a .rec file specified as --in to rewrite the datatypes according to --map and stores the rewritten Envelopes in --out." << std::endl;
         std::cerr << "Usage:   " << argv[0] << " --in=<Recording from an OD4Session> --map=<dataType mapping> --out=<OutputFile>" << std::endl;
-        std::cerr << "Example: " << argv[0] << " --in=myRecording.rec --map=123-456,332-111 --out=outRecording.rec" << std::endl;
-        std::cerr << "                           maps Envelope 123 to dataType 456, and Envelope 332 to dataType 111." << std::endl;
+        std::cerr << "Example: " << argv[0] << " --in=myRecording.rec --map=123/2-456/3,332/0-111/0 --out=outRecording.rec" << std::endl;
+        std::cerr << "                           maps Envelope 123/2 to dataType 456/3, and Envelope 332 to dataType 111." << std::endl;
         retCode = 1;
     }
     else {
-        std::unordered_map<int32_t, int32_t, cluon::UseUInt32ValueAsHashKey> mapping{};
+        std::unordered_map<std::string, std::string> mapping{};
         {
             std::string tmp{commandlineArguments["map"]};
             if (!tmp.empty()) {
@@ -46,10 +46,10 @@ int32_t main(int32_t argc, char **argv) {
                 auto entries = stringtoolbox::split(tmp, ',');
                 for (auto e : entries) {
                     std::string m{e};
-                    auto p = stringtoolbox::split(m, '-');
-                    if (p.size() == 2) {
-                      std::clog << argv[0] << " mapping " << p[0]  << " to " << p[1] << std::endl;
-                      mapping[std::stoi(p[0])] = std::stoi(p[1]);
+                    auto dataTypeMapping = stringtoolbox::split(m, '-');
+                    if (dataTypeMapping.size() == 2) {
+                        std::clog << argv[0] << " mapping " << dataTypeMapping[0]  << " to " << dataTypeMapping[1] << std::endl;
+                        mapping[dataTypeMapping[0]] = dataTypeMapping[1];
                     }
                 }
             }
@@ -68,8 +68,16 @@ int32_t main(int32_t argc, char **argv) {
                 auto next = player.getNextEnvelopeToBeReplayed();
                 if (next.first) {
                     cluon::data::Envelope env{std::move(next.second)};
-                    if (mapping.count(env.dataType()) > 0) {
-                        env.dataType(mapping[env.dataType()]);
+                    std::stringstream sstr;
+                    sstr << +env.dataType() << "/" << +env.senderStamp();
+                    const std::string str{sstr.str()};
+                    if (mapping.count(str) > 0) {
+                        std::string newDataTypeSenderStamp = mapping[str];
+                        auto p = stringtoolbox::split(newDataTypeSenderStamp, '/');
+                        if (p.size() == 2) {
+                            env.dataType(std::stoi(p[0]));
+                            env.senderStamp(std::stoi(p[1]));
+                        }
                     }
                     const std::string serializedEnvelope{cluon::serializeEnvelope(std::move(env))};
                     fout.write(serializedEnvelope.c_str(), serializedEnvelope.size());
